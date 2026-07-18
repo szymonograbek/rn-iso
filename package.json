@@ -1,9 +1,15 @@
 {
   "name": "rn-iso",
   "version": "1.0.0",
+  "description": "Isolated React Native dev environments per project/worktree",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "npm run build && node --test dist/**/*.test.js",
     "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
     "dev": "tsx src/cli.ts",
     "check": "tsc --noEmit -p tsconfig.json"
   },
@@ -24,5 +30,14 @@
   },
   "bin": {
     "rn-iso": "./dist/cli.js"
-  }
+  },
+  "keywords": [
+    "react-native",
+    "expo",
+    "metro",
+    "simulator",
+    "emulator",
+    "worktree",
+    "agent"
+  ]
 }

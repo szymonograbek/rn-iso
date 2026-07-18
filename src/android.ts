@@ -1,50 +1,100 @@
 import { spawn } from "node:child_process";
 import { requireSuccess, run } from "./exec.js";
 
-export interface AndroidDevice {
+export interface RunningEmulator {
 	readonly serial: string;
-	readonly state: "device" | "offline";
-	readonly physical: boolean;
+	readonly consolePort: number;
 }
 
-export async function androidDevices(): Promise<readonly AndroidDevice[]> {
-	const output = await requireSuccess("adb", ["devices"]);
-	const devices: AndroidDevice[] = [];
+export interface UnhealthyDevice {
+	readonly serial: string;
+	readonly status: string;
+	readonly consolePort?: number;
+}
+
+export interface AdbDevices {
+	readonly emulators: readonly RunningEmulator[];
+	readonly physical: readonly string[];
+	readonly unhealthy: readonly UnhealthyDevice[];
+}
+
+export type AndroidCandidate =
+	| { readonly kind: "avd"; readonly avdName: string; readonly running: boolean; readonly consolePort: number | null }
+	| { readonly kind: "physical"; readonly serial: string; readonly running: true };
+
+const parseDevices = (output: string): AdbDevices => {
+	const emulators: RunningEmulator[] = [];
+	const physical: string[] = [];
+	const unhealthy: UnhealthyDevice[] = [];
 	for (const line of output.split("\n").slice(1)) {
-		const [serial, state] = line.trim().split(/\s+/);
-		if (serial === undefined || state === undefined) continue;
-		const physical = !serial.startsWith("emulator-");
-		if (state === "device") devices.push({ serial, state: "device", physical });
-		if (state === "offline") devices.push({ serial, state: "offline", physical });
-	}
-	return devices.sort((left, right) => Number(right.state === "device") - Number(left.state === "device") || Number(right.physical) - Number(left.physical) || left.serial.localeCompare(right.serial));
-}
-
-export async function avds(): Promise<readonly string[]> {
-	const output = await requireSuccess("emulator", ["-list-avds"]);
-	return output.split("\n").map((name) => name.trim()).filter((name) => name.length > 0).sort();
-}
-
-export async function bootAvd(name: string): Promise<AndroidDevice> {
-	const child = spawn("emulator", [`@${name}`], { detached: true, stdio: "ignore" });
-	child.unref();
-
-	for (let attempt = 0; attempt < 120; attempt += 1) {
-		const ready = (await androidDevices()).find((device) => device.serial.startsWith("emulator-") && device.state === "device");
-		if (ready !== undefined) {
-			const bootCompleted = await run("adb", ["-s", ready.serial, "shell", "getprop", "sys.boot_completed"]);
-			if (bootCompleted.stdout.trim() === "1") return ready;
+		const [serial, status] = line.trim().split(/\s+/);
+		if (serial === undefined || status === undefined) continue;
+		const emulator = serial.match(/^emulator-(\d+)$/);
+		if (status !== "device") {
+			const consolePort = emulator?.[1] === undefined ? undefined : Number(emulator[1]);
+			unhealthy.push(consolePort === undefined ? { serial, status } : { serial, status, consolePort });
+		} else if (emulator?.[1] !== undefined) {
+			emulators.push({ serial, consolePort: Number(emulator[1]) });
+		} else {
+			physical.push(serial);
 		}
+	}
+	return { emulators, physical, unhealthy };
+};
+
+const devices = async (): Promise<AdbDevices> => parseDevices(await requireSuccess("adb", ["devices"]));
+
+const avds = async (): Promise<readonly string[]> => (await requireSuccess("emulator", ["-list-avds"]))
+	.split("\n")
+	.map((name) => name.trim())
+	.filter((name) => name.length > 0 && !name.startsWith("INFO") && !name.startsWith("WARNING"));
+
+const avdName = async (serial: string): Promise<string | null> => {
+	const result = await run("adb", ["-s", serial, "emu", "avd", "name"]);
+	return result.code === 0 ? result.stdout.split("\n")[0]?.trim() || null : null;
+};
+
+const candidates = async (): Promise<readonly AndroidCandidate[]> => {
+	const [available, connected] = await Promise.all([avds(), devices()]);
+	const running = new Map<string, number>();
+	for (const emulator of connected.emulators) {
+		const name = await avdName(emulator.serial);
+		if (name !== null) running.set(name, emulator.consolePort);
+	}
+	return [
+		...available.map((name): AndroidCandidate => ({ kind: "avd", avdName: name, running: running.has(name), consolePort: running.get(name) ?? null })),
+		...connected.physical.map((serial): AndroidCandidate => ({ kind: "physical", serial, running: true })),
+	];
+};
+
+const sort = (items: readonly AndroidCandidate[]): readonly AndroidCandidate[] => [...items].sort((left, right) =>
+	Number(right.running) - Number(left.running) ||
+	(left.kind === right.kind ? 0 : left.kind === "physical" ? -1 : 1) ||
+	(left.kind === "physical" ? left.serial : left.avdName).localeCompare(right.kind === "physical" ? right.serial : right.avdName),
+);
+
+const nextConsolePort = (claimed: readonly number[]): number => claimed.length === 0 ? 5554 : Math.max(...claimed) + 2;
+
+const boot = async (name: string, consolePort: number): Promise<string> => {
+	const child = spawn("emulator", ["-avd", name, "-port", String(consolePort)], { detached: true, stdio: "ignore" });
+	child.unref();
+	const serial = `emulator-${consolePort}`;
+	for (let attempt = 0; attempt < 120; attempt += 1) {
+		const sys = await run("adb", ["-s", serial, "shell", "getprop", "sys.boot_completed"]);
+		const dev = await run("adb", ["-s", serial, "shell", "getprop", "dev.bootcomplete"]);
+		if (sys.stdout.trim() === "1" || dev.stdout.trim() === "1") return serial;
 		await new Promise((resolve) => setTimeout(resolve, 1_000));
 	}
-	throw new Error(`Android emulator ${name} did not finish booting`);
-}
+	const snapshot = await run("adb", ["devices"]);
+	throw new Error(`Android emulator ${name} did not finish booting; adb devices:\n${snapshot.stdout}`);
+};
 
-export async function reverseMetro(serial: string, metroPort: number): Promise<void> {
-	await requireSuccess("adb", ["-s", serial, "reverse", "tcp:8081", `tcp:${metroPort}`]);
-}
+const reverseMetro = async (serial: string, metroPort: number): Promise<void> => {
+	await requireSuccess("adb", ["-s", serial, "reverse", `tcp:${metroPort}`, `tcp:${metroPort}`]);
+};
 
-export async function launchAndroid(packageName: string, serial: string): Promise<void> {
-	const result = await run("adb", ["-s", serial, "shell", "monkey", "-p", packageName, "1"]);
-	if (result.code !== 0) throw new Error(result.stderr.trim());
-}
+const shutdown = async (serial: string): Promise<void> => {
+	if (serial.startsWith("emulator-")) await run("adb", ["-s", serial, "emu", "kill"]);
+};
+
+export const Android = { avdName, avds, boot, candidates, devices, nextConsolePort, parseDevices, reverseMetro, shutdown, sort };
