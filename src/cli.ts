@@ -294,6 +294,35 @@ program.command("start")
 		}
 	});
 
+program.command("devtools")
+	.description("Open React Native DevTools for the current project's Metro server")
+	.action(async () => {
+		const context = await projectContext();
+		if (context.project === undefined || context.project.metroPort === null) throw new Error(`No Metro assignment for project ${context.root}`);
+		if (!(await Metro.healthy(context.project.metroPort))) throw new Error(`Metro is not running on port ${context.project.metroPort}; run rn-iso start`);
+
+		const targets = await Metro.debugTargets(context.project.metroPort);
+		if (targets.length === 0) throw new Error("No connected DevTools targets; launch the app first");
+		let target = targets[0];
+		if (targets.length > 1) {
+			const answer: { readonly target?: (typeof targets)[number] } = await prompts({
+				type: "select",
+				name: "target",
+				message: "Pick a DevTools target:",
+				choices: targets.map((candidate) => ({
+					title: `${candidate.title}${candidate.description === "" ? "" : ` — ${candidate.description}`}`,
+					value: candidate,
+				})),
+			});
+			if (answer.target === undefined) throw new Error("Cancelled");
+			target = answer.target;
+		}
+		if (target === undefined) throw new Error("No connected DevTools targets; launch the app first");
+
+		await Metro.openDevtools(context.project.metroPort, target.id);
+		console.log(chalk.green(`Opened DevTools for ${target.title}`));
+	});
+
 program.command("device")
 	.description("Print the assigned device for the current project")
 	.option("--platform <platform>", "ios or android", "ios")

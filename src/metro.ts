@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { open } from "node:fs/promises";
 import { join } from "node:path";
+import { z } from "zod";
 import { requireSuccess, run } from "./exec.js";
 import { StateStore } from "./state.js";
 
@@ -23,6 +24,37 @@ interface StartResult {
 	readonly alreadyRunning: boolean;
 	readonly pid: number | null;
 	readonly ready: boolean;
+}
+
+const debugTargetSchema = z.object({
+	id: z.string(),
+	title: z.string().default("Unknown target"),
+	description: z.string().default(""),
+});
+
+type DebugTarget = z.infer<typeof debugTargetSchema>;
+
+async function requireOk(response: Response, action: string): Promise<void> {
+	if (response.ok) return;
+	const detail = (await response.text()).trim();
+	throw new Error(`${action} failed with HTTP ${response.status}${detail === "" ? "" : `: ${detail}`}`);
+}
+
+async function debugTargets(port: number): Promise<readonly DebugTarget[]> {
+	const response = await fetch(`http://localhost:${port}/json/list`, {
+		method: "POST",
+		signal: AbortSignal.timeout(10_000),
+	});
+	await requireOk(response, "Fetching DevTools targets");
+	const payload: unknown = await response.json();
+	return z.array(debugTargetSchema).parse(payload);
+}
+
+async function openDevtools(port: number, targetId: string): Promise<void> {
+	const url = new URL(`http://localhost:${port}/open-debugger`);
+	url.searchParams.set("target", targetId);
+	const response = await fetch(url, { method: "POST", signal: AbortSignal.timeout(10_000) });
+	await requireOk(response, "Opening DevTools");
 }
 
 async function startMetro(projectRoot: string, port: number, expo: boolean, extras: readonly string[] = []): Promise<StartResult> {
@@ -78,5 +110,6 @@ async function tail(projectRoot: string, lines: number, follow: boolean): Promis
 	if (!follow) process.stdout.write(output);
 }
 
-export const Metro = { healthy: metroHealthy, listeningPid, logPath: metroLogPath, pidAlive, start: startMetro, stop, tail };
-export { metroHealthy, metroLogPath, startMetro };
+export const Metro = { debugTargets, healthy: metroHealthy, listeningPid, logPath: metroLogPath, openDevtools, pidAlive, start: startMetro, stop, tail };
+export { debugTargets, metroHealthy, metroLogPath, openDevtools, startMetro };
+export type { DebugTarget };

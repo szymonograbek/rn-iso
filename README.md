@@ -28,6 +28,7 @@ npx rn-iso android -- --mode=release
 | `ios [options] [-- extras...]` | Allocate/reuse an unclaimed iOS simulator, configure Metro, and build/install. Supports `--auto`, `--managed-metro`, `--device-type`, `--runtime`, `--script`, `--no-script`, `--pm`, `--label`, and `--no-install`. |
 | `android [options] [-- extras...]` | Allocate/reuse an AVD or physical device, configure `adb reverse`, and build/install. Supports `--auto`, `--managed-metro`, script/package-manager overrides, labels, and `--no-install`. |
 | `start [--reset-cache] [-- extras...]` | Start managed Metro without building. |
+| `devtools` | Open React Native DevTools for the current project's connected app. Prompts when multiple targets are connected. |
 | `stop [target]` | Stop Metro by current project, port, shortcut, or path. |
 | `logs [target] [-n count] [--follow]` | Read the managed Metro log. |
 | `device [--platform ios\|android] [--json]` | Print the assigned device and Metro health. |
