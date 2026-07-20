@@ -183,6 +183,8 @@ program.command("ios")
 			console.log(chalk.dim(`> ${invocation.command} ${invocation.args.join(" ")}`));
 			await inherited(invocation.command, invocation.args, prepared.root, invocation.env);
 		}
+		if (project.bundleId === null || project.bundleId === undefined) throw new Error("iOS bundle identifier was not found");
+		await Ios.configureAndLaunch(simulator.udid, project.bundleId, project.metroPort);
 		console.log(chalk.green(`\nOK: iOS ready on sim ${await Ios.format(simulator.udid)}, Metro port ${project.metroPort}`));
 	});
 
