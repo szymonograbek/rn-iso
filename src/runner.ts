@@ -43,6 +43,8 @@ const scriptCli = (body: string | undefined): "expo" | "react-native" | "unknown
 	return "unknown";
 };
 
+const metroEnvironment = (port: number): NodeJS.ProcessEnv => ({ ...process.env, RCT_METRO_PORT: String(port) });
+
 interface BuildOptions {
 	readonly root: string;
 	readonly manager: PackageManager;
@@ -59,8 +61,9 @@ const ios = (options: BuildOptions & { readonly udid: string }): Invocation => {
 	const args = [cli === "expo" ? "--device" : "--udid", options.udid, "--port", String(options.port)];
 	if (options.managedMetro && cli !== "expo") args.push("--no-packager");
 	args.push(...options.extras);
-	if (body !== undefined && options.scriptName !== null) return { command: options.manager, args: scriptCommand(options.manager, options.scriptName, args) };
-	return { command: "npx", args: [options.isExpo ? "expo" : "react-native", options.isExpo ? "run:ios" : "run-ios", ...args] };
+	const env = metroEnvironment(options.port);
+	if (body !== undefined && options.scriptName !== null) return { command: options.manager, args: scriptCommand(options.manager, options.scriptName, args), env };
+	return { command: "npx", args: [options.isExpo ? "expo" : "react-native", options.isExpo ? "run:ios" : "run-ios", ...args], env };
 };
 
 const android = (options: BuildOptions & { readonly serial: string; readonly avdName: string | null }): Invocation => {
@@ -71,12 +74,13 @@ const android = (options: BuildOptions & { readonly serial: string; readonly avd
 	if (cli === "expo" || body !== undefined) args.push("--port", String(options.port));
 	if (options.managedMetro && cli !== "expo") args.push("--no-packager");
 	args.push(...options.extras);
-	if (body !== undefined && options.scriptName !== null) return { command: options.manager, args: scriptCommand(options.manager, options.scriptName, args) };
-	const invocation = {
+	const env = metroEnvironment(options.port);
+	if (body !== undefined && options.scriptName !== null) return { command: options.manager, args: scriptCommand(options.manager, options.scriptName, args), env };
+	return {
 		command: "npx",
 		args: [options.isExpo ? "expo" : "react-native", options.isExpo ? "run:android" : "run-android", ...args],
+		env,
 	};
-	return options.isExpo ? invocation : { ...invocation, env: { ...process.env, RCT_METRO_PORT: String(options.port) } };
 };
 
 export const Runner = { android, ios, packageManager, script, scriptCli, scriptCommand };

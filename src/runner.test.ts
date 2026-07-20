@@ -19,10 +19,10 @@ test("builds package-manager script commands", () => {
 test("uses Expo device flags and keeps extras last", () => {
 	const root = fixture({ ios: "expo run:ios" });
 	try {
-		assert.deepEqual(Runner.ios({ root, manager: "yarn", scriptName: "ios", isExpo: true, port: 8083, managedMetro: true, extras: ["--variant=release"], udid: "UDID" }), {
-			command: "yarn",
-			args: ["ios", "--device", "UDID", "--port", "8083", "--variant=release"],
-		});
+		const invocation = Runner.ios({ root, manager: "yarn", scriptName: "ios", isExpo: true, port: 8083, managedMetro: true, extras: ["--variant=release"], udid: "UDID" });
+		assert.equal(invocation.command, "yarn");
+		assert.deepEqual(invocation.args, ["ios", "--device", "UDID", "--port", "8083", "--variant=release"]);
+		assert.equal(invocation.env?.RCT_METRO_PORT, "8083");
 	} finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -30,6 +30,7 @@ test("uses RN no-packager and Android Metro environment", () => {
 	const root = fixture();
 	try {
 		const ios = Runner.ios({ root, manager: "npm", scriptName: null, isExpo: false, port: 8083, managedMetro: true, extras: [], udid: "UDID" });
+		assert.equal(ios.env?.RCT_METRO_PORT, "8083");
 		assert.deepEqual(ios.args, ["react-native", "run-ios", "--udid", "UDID", "--port", "8083", "--no-packager"]);
 		const android = Runner.android({ root, manager: "npm", scriptName: null, isExpo: false, port: 8083, managedMetro: true, extras: [], serial: "emulator-5554", avdName: "Pixel" });
 		assert.equal(android.env?.RCT_METRO_PORT, "8083");
