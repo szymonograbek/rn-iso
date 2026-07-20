@@ -270,7 +270,8 @@ program.command("android")
 		if (options.install) {
 			const manager = resolvePackageManager(options.pm, project.settings?.packageManager, prepared.root);
 			const scriptName = options.script === false ? null : typeof options.script === "string" ? options.script : project.settings?.android?.script ?? "android";
-			const invocation = Runner.android({ root: prepared.root, manager, scriptName, isExpo: project.isExpo, port: project.metroPort, managedMetro: options.managedMetro === true, extras, serial, avdName: selectedAvd });
+			const expoDeviceName = candidate.kind === "physical" ? candidate.modelName ?? candidate.serial : candidate.avdName;
+			const invocation = Runner.android({ root: prepared.root, manager, scriptName, isExpo: project.isExpo, port: project.metroPort, managedMetro: options.managedMetro === true, extras, serial, expoDeviceName });
 			console.log(chalk.dim(`> ${invocation.command} ${invocation.args.join(" ")}`));
 			await inherited(invocation.command, invocation.args, prepared.root, invocation.env);
 		}

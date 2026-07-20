@@ -32,8 +32,16 @@ test("uses RN no-packager and Android Metro environment", () => {
 		const ios = Runner.ios({ root, manager: "npm", scriptName: null, isExpo: false, port: 8083, managedMetro: true, extras: [], udid: "UDID" });
 		assert.equal(ios.env?.RCT_METRO_PORT, "8083");
 		assert.deepEqual(ios.args, ["react-native", "run-ios", "--udid", "UDID", "--port", "8083", "--no-packager"]);
-		const android = Runner.android({ root, manager: "npm", scriptName: null, isExpo: false, port: 8083, managedMetro: true, extras: [], serial: "emulator-5554", avdName: "Pixel" });
+		const android = Runner.android({ root, manager: "npm", scriptName: null, isExpo: false, port: 8083, managedMetro: true, extras: [], serial: "emulator-5554", expoDeviceName: "Pixel" });
 		assert.equal(android.env?.RCT_METRO_PORT, "8083");
 		assert.deepEqual(android.args, ["react-native", "run-android", "--device", "emulator-5554", "--no-packager"]);
+	} finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("uses the Android model name for Expo physical devices", () => {
+	const root = fixture();
+	try {
+		const android = Runner.android({ root, manager: "npm", scriptName: null, isExpo: true, port: 8083, managedMetro: false, extras: [], serial: "R5CR70", expoDeviceName: "Pixel_7a" });
+		assert.deepEqual(android.args, ["expo", "run:android", "--device", "Pixel_7a", "--port", "8083"]);
 	} finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -12,22 +12,27 @@ export interface UnhealthyDevice {
 	readonly consolePort?: number;
 }
 
+export interface PhysicalDevice {
+	readonly serial: string;
+	readonly modelName: string | null;
+}
+
 export interface AdbDevices {
 	readonly emulators: readonly RunningEmulator[];
-	readonly physical: readonly string[];
+	readonly physical: readonly PhysicalDevice[];
 	readonly unhealthy: readonly UnhealthyDevice[];
 }
 
 export type AndroidCandidate =
 	| { readonly kind: "avd"; readonly avdName: string; readonly running: boolean; readonly consolePort: number | null }
-	| { readonly kind: "physical"; readonly serial: string; readonly running: true };
+	| { readonly kind: "physical"; readonly serial: string; readonly modelName: string | null; readonly running: true };
 
 const parseDevices = (output: string): AdbDevices => {
 	const emulators: RunningEmulator[] = [];
-	const physical: string[] = [];
+	const physical: PhysicalDevice[] = [];
 	const unhealthy: UnhealthyDevice[] = [];
 	for (const line of output.split("\n").slice(1)) {
-		const [serial, status] = line.trim().split(/\s+/);
+		const [serial, status, ...properties] = line.trim().split(/\s+/);
 		if (serial === undefined || status === undefined) continue;
 		const emulator = serial.match(/^emulator-(\d+)$/);
 		if (status !== "device") {
@@ -36,13 +41,14 @@ const parseDevices = (output: string): AdbDevices => {
 		} else if (emulator?.[1] !== undefined) {
 			emulators.push({ serial, consolePort: Number(emulator[1]) });
 		} else {
-			physical.push(serial);
+			const model = properties.find((property) => property.startsWith("model:"));
+			physical.push({ serial, modelName: model?.slice("model:".length) || null });
 		}
 	}
 	return { emulators, physical, unhealthy };
 };
 
-const devices = async (): Promise<AdbDevices> => parseDevices(await requireSuccess("adb", ["devices"]));
+const devices = async (): Promise<AdbDevices> => parseDevices(await requireSuccess("adb", ["devices", "-l"]));
 
 const avds = async (): Promise<readonly string[]> => (await requireSuccess("emulator", ["-list-avds"]))
 	.split("\n")
@@ -63,7 +69,7 @@ const candidates = async (): Promise<readonly AndroidCandidate[]> => {
 	}
 	return [
 		...available.map((name): AndroidCandidate => ({ kind: "avd", avdName: name, running: running.has(name), consolePort: running.get(name) ?? null })),
-		...connected.physical.map((serial): AndroidCandidate => ({ kind: "physical", serial, running: true })),
+		...connected.physical.map((device): AndroidCandidate => ({ kind: "physical", ...device, running: true })),
 	];
 };
 

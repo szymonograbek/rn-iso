@@ -66,10 +66,10 @@ const ios = (options: BuildOptions & { readonly udid: string }): Invocation => {
 	return { command: "npx", args: [options.isExpo ? "expo" : "react-native", options.isExpo ? "run:ios" : "run-ios", ...args], env };
 };
 
-const android = (options: BuildOptions & { readonly serial: string; readonly avdName: string | null }): Invocation => {
+const android = (options: BuildOptions & { readonly serial: string; readonly expoDeviceName: string }): Invocation => {
 	const body = options.scriptName === null ? undefined : script(options.root, options.scriptName);
 	const cli = body === undefined ? (options.isExpo ? "expo" : "react-native") : scriptCli(body);
-	const device = cli === "expo" ? options.avdName ?? options.serial : options.serial;
+	const device = cli === "expo" ? options.expoDeviceName : options.serial;
 	const args = ["--device", device];
 	if (cli === "expo" || body !== undefined) args.push("--port", String(options.port));
 	if (options.managedMetro && cli !== "expo") args.push("--no-packager");
